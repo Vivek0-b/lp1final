@@ -1,0 +1,1639 @@
+exp 1 : Design suitable data structures and implement pass-I of a two-pass assembler for pseudo-machine 
+in Java using object oriented feature. 
+Implementation should consist of a few instructions from each category and few assembler directives.
+
+
+import java.io.*;
+
+class P1 {
+    public static void main(String[] ar) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+
+        // Define a 2D array for instructions and directives
+        String a[][] = {
+            {"", "START", "101", ""},
+            {"", "MOVER", "BREG", "ONE"},
+            {"AGAIN", "MULT", "BREG", "TERM"},
+            {"", "MOVER", "CREG", "TERM"},
+            {"", "ADD", "CREG", "N"},
+            {"", "MOVEM", "CREG", "TERM"},
+            {"N", "DS", "2", ""},
+            {"RESULT", "DS", "2", ""},
+            {"ONE", "DC", "1", ""},
+            {"TERM", "DS", "1", ""},
+            {"", "END", "", ""}
+        };
+
+        // Initialize location counter (LC) from the start instruction
+        int lc = Integer.parseInt(a[0][2]);
+
+        // Symbol Table initialization
+        String st[][] = new String[5][2];
+        int cnt = 0;
+
+        // Pass 1: Generate Symbol Table
+        for (int i = 1; i < 11; i++) {
+            if (!a[i][0].isEmpty()) {
+                st[cnt][0] = a[i][0]; // Store the symbol
+                st[cnt][1] = Integer.toString(lc); // Store its LC value
+                cnt++;
+
+                // Handle DS (Define Storage) directives
+                if (a[i][1].equalsIgnoreCase("DS")) {
+                    int d = Integer.parseInt(a[i][2]);
+                    lc = lc + d;
+                } else {
+                    lc++;
+                }
+            } else {
+                lc++;
+            }
+        }
+
+        // Print Symbol Table
+        System.out.println("***SYMBOL TABLE***");
+        System.out.println("___________________");
+        for (int i = 0; i < 5; i++) {
+            for (int j = 0; j < 2; j++) {
+                System.out.print(st[i][j] + "\t");
+            }
+            System.out.println();
+        }
+
+        // Machine instructions and registers
+        String inst[] = {"STOP", "ADD", "SUB", "MULT", "MOVER", "MOVEM", "COMP", "BC", "DIV", "READ", "PRINT"};
+        String reg[] = {"NULL", "AREG", "BREG", "CREG", "DREG"};
+        int op[][] = new int[12][3]; // Operation table
+        int p = 1, cnt1 = 0;
+
+        // Pass 2: Generate Machine Operation Table (MOT)
+        for (int i = 1; i < 11; i++) {
+            // Check for machine instructions
+            for (int j = 0; j < 11; j++) {
+                if (a[i][1].equalsIgnoreCase(inst[j])) {
+                    op[cnt1][0] = j; // Store instruction index
+                } else if (a[i][1].equalsIgnoreCase("DS")) {
+                    p = Integer.parseInt(a[i][2]); // Define Storage
+                } else if (a[i][1].equalsIgnoreCase("DC")) {
+                    op[cnt1][2] = Integer.parseInt(a[i][2]); // Define Constant
+                }
+            }
+
+            // Check for registers
+            for (int k = 0; k < 5; k++) {
+                if (a[i][2].equalsIgnoreCase(reg[k])) {
+                    op[cnt1][1] = k; // Store register index
+                }
+            }
+
+            // Check for symbol table references
+            for (int l = 0; l < 5; l++) {
+                if (a[i][3].equalsIgnoreCase(st[l][0])) {
+                    int mn = Integer.parseInt(st[l][1]);
+                    op[cnt1][2] = mn; // Store memory reference
+                }
+            }
+            cnt1 = cnt1 + p; // Update the instruction counter
+        }
+
+        // Print the Machine Operation Table (MOT)
+        System.out.println("\n *****OUTPUT*****");
+        System.out.println("**********MOT TABLE**********");
+        int dlc = Integer.parseInt(a[0][2]);
+        for (int i = 0; i < 12; i++) {
+            System.out.print(dlc++ + "\t");
+            for (int j = 0; j < 3; j++) {
+                System.out.print(" " + op[i][j] + " ");
+            }
+            System.out.println();
+        }
+        System.out.println();
+    }
+}
+
+<=========================================================================================================================================================================================================================================================================================================>
+exp 2 : Implement Pass-II of two pass assembler for pseudo-machine in Java using object oriented features. 
+The output of assignment-1 (intermediate file and symbol table) should be input for this assignment.
+
+
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.StringTokenizer;
+
+import java.util.*;
+	class Tuple {
+		//m_class specifies class of the mnemonic such as IS, DL, or AD
+		String mnemonic, m_class, opcode;
+		int length;
+		
+		Tuple() {}
+		
+		Tuple(String s1, String s2, String s3, String s4) {
+			mnemonic = s1;
+			m_class = s2; 
+			opcode = s3;
+			length = Integer.parseInt(s4);
+			
+		}
+	}
+
+	class SymTuple {
+		String symbol, address, length;
+		
+		SymTuple(String s1, String s2, String i1) {
+			symbol = s1;
+			address = s2;
+			length = i1;
+		}
+	}
+
+	class LitTuple {
+		String literal, address, length;
+		
+		LitTuple() {}
+		
+		LitTuple(String s1,  String s2, String i1) {
+			literal = s1;
+			address = s2;
+			length = i1;		
+		}
+	}
+	
+	public class Assembler_PassTwo {
+		
+	static int lc,iSymTabPtr=0, iLitTabPtr=0, iPoolTabPtr=0;
+	static int poolTable[] = new int[10];
+	static Map<String,Tuple> MOT;
+	static ArrayList<SymTuple> symtable;
+	static ArrayList<LitTuple> littable;
+	static Map<String, String> regAddressTable;
+	static PrintWriter out_pass2;
+
+	static void initiallizeTables() throws Exception{
+		symtable = new ArrayList<>();
+		littable = new ArrayList<>();
+		regAddressTable = new HashMap<>();
+		//MOT = new HashMap<>();
+		String s;
+		BufferedReader br;
+		br = new BufferedReader(new InputStreamReader(new FileInputStream("/home/student/Downloads/PASS I ASSEMBLER-20240710T090734Z-001/PASS II ASSEMBLER/Assembler_PassTwo/symtable.txt")));
+		while((s = br.readLine()) != null) {
+			StringTokenizer st = new StringTokenizer(s, "\t", false);
+			symtable.add(new SymTuple(st.nextToken(), st.nextToken(), ""));
+		}
+		br.close();
+		br = new BufferedReader(new InputStreamReader(new FileInputStream("/home/student/Downloads/PASS I ASSEMBLER-20240710T090734Z-001/PASS II ASSEMBLER/Assembler_PassTwo/littable.txt")));
+		while((s = br.readLine()) != null) {
+			StringTokenizer st = new StringTokenizer(s, "\t", false);
+			littable.add(new LitTuple(st.nextToken(), st.nextToken(), ""));
+		}
+		br.close();
+		//Initiallize register address table
+		regAddressTable.put("AREG", "1");
+		regAddressTable.put("BREG", "2");
+		regAddressTable.put("CREG", "3");
+		regAddressTable.put("DREG", "4");
+	}
+	
+	static void pass2() throws Exception{
+		BufferedReader input = new BufferedReader(new InputStreamReader(new FileInputStream("/home/student/Downloads/PASS I ASSEMBLER-20240710T090734Z-001/PASS II ASSEMBLER/Assembler_PassTwo/output_pass1.txt")));
+		out_pass2 = new PrintWriter(new FileWriter("/home/student/Downloads/PASS I ASSEMBLER-20240710T090734Z-001/PASS II ASSEMBLER/Assembler_PassTwo/output_pass2.txt"), true);
+		String s;
+		
+		//Read from intermediate file one line at a time
+		while((s = input.readLine()) != null) {
+			//Replace all ( and ) characters by a blank string
+			s=s.replaceAll("(\\()", " ");
+			s=s.replaceAll("(\\))", " ");
+
+			//For each line, separate out the tokens
+			String ic_tokens[] = tokenizeString(s, " ");
+			if(ic_tokens == null || ic_tokens.length==0){
+				continue;
+			}
+			String output_str = "";
+						
+			//Second token contains mnemonic class and opcode
+			String mnemonic_class = ic_tokens[1];
+			//Separate the mnemonic and its opcode which are separated by a comma
+			String m_tokens[] = tokenizeString(mnemonic_class, ",");
+			
+			//Write the second token as is in the output file
+			 
+			if(m_tokens[0].equalsIgnoreCase("IS")){
+				//First token is location counter which will be output as it is 
+				output_str += ic_tokens[0] + " ";
+				//Output the opcode of the instruction
+				output_str += m_tokens[1] + " ";
+				String opr_tokens[];
+				for(int i = 2; i <ic_tokens.length; i++){
+					opr_tokens = tokenizeString(ic_tokens[i], ",");
+					if(opr_tokens[0].equalsIgnoreCase("RG")){
+						output_str += opr_tokens[1] + " ";
+					}
+					else if(opr_tokens[0].equalsIgnoreCase("S")){
+						int index = Integer.parseInt(opr_tokens[1]);
+						output_str += symtable.get(index).address + " ";
+					}
+					else if(opr_tokens[0].equalsIgnoreCase("L")){
+						int index = Integer.parseInt(opr_tokens[1]);
+						output_str += littable.get(index).address + " ";
+					}
+				}
+			}
+			else if(m_tokens[0].equalsIgnoreCase("DL")){
+				//First token is location counter which will be output as it is 
+				output_str += ic_tokens[0] + " ";
+				if(m_tokens[1].equalsIgnoreCase("02")){
+					//Process for operands of mnemonic DC
+					String opr_tokens[] = tokenizeString(ic_tokens[2], ",");
+					output_str += "00 00 " + opr_tokens[1] + " ";
+				}
+			}
+			System.out.println(output_str);
+			out_pass2.println(output_str);
+			
+		}
+	}
+
+	static String[] tokenizeString(String str, String separator){
+		StringTokenizer st = new StringTokenizer(str, separator, false);
+		//Construct an array of the separated tokens
+		String s_arr[] = new String[st.countTokens()];
+		for(int i=0 ; i < s_arr.length ; i++) {
+			s_arr[i] = st.nextToken();
+		}
+		return s_arr;
+	}
+	public static void main(String[] args) throws Exception {
+		initiallizeTables();
+		pass2();
+	}
+}
+
+<=========================================================================================================================================================================================================================================================================================================>
+
+exp 3 : Design suitable data structures and implement pass-I of a two-pass macro-processor using OOP features in Java
+
+
+( inside A3 folder this program will be )
+
+package A3;
+
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.StringTokenizer;
+
+public class MacroProcessor_PassOne {
+	static List<String> MDT;
+	static Map<String, String> MNT;
+	static int mntPtr, mdtPtr;
+	static Map<String,String> ALA;
+	
+
+	public static void main(String[] args) {
+		try{
+			pass1();
+		}catch(Exception ex){
+			ex.printStackTrace();
+		}
+	}
+	
+	static void pass1() throws Exception {
+		
+		//Initiallize data structures
+		MDT = new ArrayList<String>();
+		MNT = new LinkedHashMap<String, String>();
+		ALA = new HashMap<String,String>();
+		mntPtr =0; mdtPtr = 0;
+		
+		BufferedReader input = new BufferedReader(new InputStreamReader(new FileInputStream("src/A3/input.txt")));
+		PrintWriter out_pass1 = new PrintWriter(new FileWriter("src/A3/output_pass1.txt"), true);
+		PrintWriter out_mnt = new PrintWriter(new FileWriter("src/A3/MNT.txt"), true);
+		PrintWriter out_mdt = new PrintWriter(new FileWriter("src/A3/MDT.txt"), true);
+
+		String s;
+		boolean processingMacroDefinition = false;
+		boolean processMacroName = false;
+		
+		System.out.println("============= Pass 1 Output ==============");
+		//Read from input file one line at a time
+		while((s = input.readLine()) != null) {
+			//For each line, separate out the tokens
+			String s_arr[] = tokenizeString(s," ");
+			
+			//Analyze first token to check if it is a macro definition
+			String curToken = s_arr[0];
+			if(curToken.equalsIgnoreCase("MACRO")){
+				processingMacroDefinition = true;
+				processMacroName = true;
+			}
+			else if(processingMacroDefinition == true){
+				if(curToken.equalsIgnoreCase("MEND")){
+					MDT.add(mdtPtr++, s);
+					processingMacroDefinition = false;
+					continue;
+				}
+				//Insert Macro Name into MNT
+				if(processMacroName == true){
+					MNT.put(curToken, mdtPtr+"");
+					mntPtr++;
+					processMacroName = false;
+					processArgumentList(s_arr[1]);
+					MDT.add(mdtPtr,s);
+					mdtPtr++;
+					continue;
+				}
+				//Convert arguments in the definition into corresponding indexed notation
+				//ADD &REG,&X == ADD #2,#1
+				String indexedArgList = processArguments(s_arr[1]);
+				MDT.add(mdtPtr++, curToken + " " + indexedArgList);
+			}
+			else{
+				//If line is not part of a Macro definition print the line as it is in the output file
+				System.out.println(s);
+				out_pass1.println(s);
+			}
+		}
+		input.close();
+		//Print MNT
+		System.out.println("============= MNT ==============");
+		Iterator<String> itMNT = MNT.keySet().iterator();
+		String key, mntRow, mdtRow;
+		while(itMNT.hasNext()){
+			key = (String)itMNT.next();
+			mntRow = key + " " + MNT.get(key);
+			System.out.println(mntRow);
+			out_mnt.println(mntRow);
+			
+		}
+		//Print MDT
+		System.out.println("============= MDT ==============");
+		for(int i = 0; i < MDT.size(); i++){
+			mdtRow = i + "  " + MDT.get(i);
+			System.out.println(mdtRow);
+			out_mdt.println(mdtRow);
+		}
+		out_pass1.close();
+		out_mnt.close();
+		out_mdt.close();
+	}
+	
+	static void processArgumentList(String argList){
+		StringTokenizer st = new StringTokenizer(argList, ",", false);
+		//For each macro definition, remove contents of the HashMap
+		//which are arguments from previous macro definition
+		ALA.clear();
+		int argCount = st.countTokens();
+		//Put all arguments for current macro definition in the HashMap
+		//with argument as key and argument index as value
+		String curArg;
+		for(int i=1 ; i <= argCount ; i++) {
+			curArg = st.nextToken();
+			if(curArg.contains("=")){
+				curArg = curArg.substring(0,curArg.indexOf("="));
+			}
+			ALA.put(curArg, "#"+i);
+		}
+	}
+	
+	static String processArguments(String argList){
+		StringTokenizer st = new StringTokenizer(argList, ",", false);
+		int argCount = st.countTokens();
+		String curArg, argIndexed;
+		for(int i=0 ; i < argCount ; i++) {
+			curArg = st.nextToken();
+			argIndexed = ALA.get(curArg);
+			argList = argList.replaceAll(curArg, argIndexed);
+		}
+		return argList;
+	}
+	
+	static String[] tokenizeString(String str, String separator){
+		StringTokenizer st = new StringTokenizer(str, separator, false);
+		//Construct an array of the separated tokens
+		String s_arr[] = new String[st.countTokens()];
+		for(int i=0 ; i < s_arr.length ; i++) {
+			s_arr[i] = st.nextToken();
+		}
+		return s_arr;
+	}
+
+}
+
+<=========================================================================================================================================================================================================================================================================================================>
+
+exp 4 : Write a Java program for pass-II of a two-pass macro-processor.
+
+package A4;
+
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.StringTokenizer;
+
+
+public class MacroProcessor_PassTwo {
+	static List<String> MDT;
+	static Map<String, String> MNT;
+	static int mntPtr, mdtPtr;
+	static List<String> formalParams, actualParams;
+
+	public static void main(String[] args) {
+		try{
+			initiallizeTables();
+			pass2();
+		}catch(Exception ex){
+			ex.printStackTrace();
+		}
+	}
+	
+	static void pass2() throws Exception {
+		BufferedReader input = new BufferedReader(new InputStreamReader(new FileInputStream("src/A4/output_pass1.txt")));
+		PrintWriter out_pass2 = new PrintWriter(new FileWriter("src/A4/output_pass2.txt"), true);
+		
+		System.out.println("============= Pass 2 Output ==============");
+		//Read from input file one line at a time
+		String s;
+		while((s = input.readLine()) != null) {
+			String s_arr[] = tokenizeString(s, " ");
+			//First token will either be a mnemonic or a macro call
+			if(MNT.containsKey(s_arr[0])){
+				//It is a macro call
+				//Create an array list of formal parameters
+				String actual_params[] = tokenizeString(s_arr[1], ",");
+				String param;
+				actualParams.clear();
+				for(int i =0; i <actual_params.length; i++){
+					param = actual_params[i];
+					if(param.contains("=")){
+						//If parameter specified a default value, the value will go in the list instead of param name
+						param = param.substring(param.indexOf("=")+1, param.length());
+					}
+					actualParams.add(param);
+				}
+				//Expand the macro call
+				mdtPtr = Integer.parseInt(MNT.get(s_arr[0]));
+				//Read macro definitaion starting from mdtPtr till MEND
+				String macroDef;
+				boolean createParamArray = true;
+				String def_tokens[] = {}, paramStr = "", printStr;
+				while(true){
+					//First line of macro definition is name and arglist
+					macroDef = MDT.get(mdtPtr);
+					if(createParamArray == true){
+						createFormalParamList(macroDef);
+						createParamArray = false;
+					}
+					else{
+						//Tokenize line of macro definition
+						def_tokens = tokenizeString(macroDef, " ");
+						//If the line is MEND, exit loop
+						if(def_tokens[0].equalsIgnoreCase("MEND")){
+							break;
+						}
+						else{
+							//Replace formal parameters with actual parameters
+							paramStr = replaceFormalParams(def_tokens[1]);
+						}
+						printStr = "+" + def_tokens[0] + " " + paramStr;
+						System.out.println(printStr);
+						out_pass2.println(printStr);
+					}
+					mdtPtr++;
+				}
+			}
+			else{
+				//It is a line of normal assembly code
+				//Print the line as it is in the output file
+				System.out.println(s);
+				out_pass2.println(s);
+			}
+		}
+		input.close();
+		out_pass2.close();
+	}
+	
+	static String replaceFormalParams(String formalParamList){
+		String returnStr = "";
+		//Replace # by blank string
+		formalParamList = formalParamList.replace("#", "");
+		//Separate formal params
+		String param_array[] = tokenizeString(formalParamList, ",");
+		int index;
+		String actualParam;
+		//For every parameter in the formal parameter list
+		for(int i = 0; i < param_array.length; i++){
+			index = Integer.parseInt(param_array[i]);
+			if(index <= actualParams.size()){
+				actualParam = actualParams.get(index-1);
+			}
+			else{
+				actualParam = formalParams.get(index-1);
+			}
+			returnStr += actualParam + ","; 
+		}
+		
+		//Strip last comma
+		returnStr = returnStr.substring(0,returnStr.length() -1);
+		return returnStr;		
+	}
+	
+	static void createFormalParamList(String macroDef){
+		//By processing macro call generate array of actual parameters
+		String argList, arg_array[];
+		String s_arr[] = tokenizeString(macroDef, " ");
+		//First array element will be macro name and second will be argument list
+		argList = s_arr[1];
+		//Separate the arguments in the list
+		arg_array = tokenizeString(argList, ",");
+		String param;
+		formalParams.clear();
+		for(int i=0; i <arg_array.length; i++){
+			param = arg_array[i];
+			if(param.contains("=")){
+				//If parameter specified a default value, the value will go in the list instead of param name
+				param = param.substring(param.indexOf("=")+1, param.length());
+			}
+			formalParams.add(param);
+		}
+	}
+	
+	static void initiallizeTables() throws Exception{
+		MDT = new ArrayList<String>();
+		MNT = new LinkedHashMap<String, String>();
+		formalParams = new ArrayList<String>();
+		actualParams = new ArrayList<String>();
+		
+		//Read contents of MNT.txt and create internal data structure
+		BufferedReader br;
+		String s;
+		br = new BufferedReader(new InputStreamReader(new FileInputStream("src/A4/MNT.txt")));
+		while((s = br.readLine()) != null) {
+			StringTokenizer st = new StringTokenizer(s, " ", false);
+			MNT.put(st.nextToken(), st.nextToken());
+		}
+		br.close();
+		
+		//Read contents of MDT.txt and create internal data structure
+		br = new BufferedReader(new InputStreamReader(new FileInputStream("src/A4/MDT.txt")));
+		while((s = br.readLine()) != null) {
+			//For each line, separate out the tokens
+			String s_arr[] = tokenizeString(s," ");
+			if(s_arr.length == 0){
+				continue;
+			}
+			int index = Integer.parseInt(s_arr[0]);
+			
+			if(s_arr.length == 2){
+				MDT.add(index, s_arr[1]);
+			}
+			else if(s_arr.length == 3){
+				MDT.add(index, s_arr[1] + " " + s_arr[2]);
+			}
+			
+		}
+		br.close();
+	}
+	
+	static String[] tokenizeString(String str, String separator){
+		StringTokenizer st = new StringTokenizer(str, separator, false);
+		//Construct an array of the separated tokens
+		String s_arr[] = new String[st.countTokens()];
+		for(int i=0 ; i < s_arr.length ; i++) {
+			s_arr[i] = st.nextToken();
+		}
+		return s_arr;
+	}
+}
+
+<=========================================================================================================================================================================================================================================================================================================>
+
+exp 5 : Write a Java program (using OOP features) to implement the following scheduling algorithms: 
+FCFS, SJF (Preemptive), Shortest Remaining Time First (SRTF), 
+Priority (Non-Preemptive), Priority (Preemptive) and Round Robin (Preemptive).
+
+
+( SimpleFCFS another tab with this name )
+
+import java.util.Scanner;
+
+public class SimpleFCFS {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+
+        System.out.print("Enter number of processes: ");
+        int n = sc.nextInt();
+
+        int[] burstTime = new int[n];
+        int[] waitingTime = new int[n];
+        int[] turnAroundTime = new int[n];
+
+        System.out.println("Enter burst time for each process:");
+        for (int i = 0; i < n; i++) {
+            System.out.print("Process " + (i + 1) + ": ");
+            burstTime[i] = sc.nextInt();
+        }
+
+        waitingTime[0] = 0; 
+        for (int i = 1; i < n; i++) {
+            waitingTime[i] = waitingTime[i - 1] + burstTime[i - 1];
+        }
+
+        for (int i = 0; i < n; i++) {
+            turnAroundTime[i] = waitingTime[i] + burstTime[i];
+        }
+
+        System.out.println("\nProcess\tBurst Time\tWaiting Time\tTurnaround Time");
+        for (int i = 0; i < n; i++) {
+            System.out.println("P" + (i + 1) + "\t\t" + burstTime[i] + "\t\t" + waitingTime[i] + "\t\t" + turnAroundTime[i]);
+        }
+
+        float totalWT = 0, totalTAT = 0;
+        for (int i = 0; i < n; i++) {
+            totalWT += waitingTime[i];
+            totalTAT += turnAroundTime[i];
+        }
+        System.out.println("\nAverage Waiting Time: " + (totalWT / n));
+        System.out.println("Average Turnaround Time: " + (totalTAT / n));
+
+        sc.close();
+    }
+}
+
+( SJF another tab with this name )
+
+import java.util.*;
+
+class Process {
+    int id; // Process ID
+    int burstTime; // Burst time of the process
+
+    Process(int id, int burstTime) {
+        this.id = id;
+        this.burstTime = burstTime;
+    }
+}
+
+public class SJF {
+    
+    public static void findAverageTime(List<Process> processes) {
+        // Sort processes based on burst time
+        processes.sort(Comparator.comparingInt(p -> p.burstTime));
+
+        int totalWaitingTime = 0;
+        int totalTurnAroundTime = 0;
+        int n = processes.size();
+        int[] waitingTime = new int[n];
+        int[] turnAroundTime = new int[n];
+
+        // Calculate waiting time and turnaround time
+        for (int i = 0; i < n; i++) {
+            if (i == 0) {
+                waitingTime[i] = 0; // First process has no waiting time
+            } else {
+                waitingTime[i] = processes.get(i - 1).burstTime + waitingTime[i - 1];
+            }
+            turnAroundTime[i] = waitingTime[i] + processes.get(i).burstTime;
+
+            totalWaitingTime += waitingTime[i];
+            totalTurnAroundTime += turnAroundTime[i];
+        }
+
+        // Calculate average waiting time and turnaround time
+        double averageWaitingTime = (double) totalWaitingTime / n;
+        double averageTurnAroundTime = (double) totalTurnAroundTime / n;
+
+        // Display results
+        System.out.println("Process ID\tBurst Time\tWaiting Time\tTurnaround Time");
+        for (int i = 0; i < n; i++) {
+            System.out.printf("%d\t\t%d\t\t%d\t\t%d\n", processes.get(i).id, processes.get(i).burstTime, waitingTime[i], turnAroundTime[i]);
+        }
+        System.out.printf("Average Waiting Time: %.2f\n", averageWaitingTime);
+        System.out.printf("Average Turnaround Time: %.2f\n", averageTurnAroundTime);
+    }
+
+    public static void main(String[] args) {
+        List<Process> processes = new ArrayList<>();
+
+        // Example processes
+        processes.add(new Process(1, 6));
+        processes.add(new Process(2, 8));
+        processes.add(new Process(3, 7));
+        processes.add(new Process(4, 3));
+
+        findAverageTime(processes);
+    }
+}
+
+( Non-Preemptive Priority Scheduling Code )
+
+import java.util.Scanner;
+
+public class NonPreemptivePriorityScheduling {
+    static int jtime = 0;
+    static int counter;
+    static int n;
+    static int[] at = new int[20], bt = new int[20], bt_copy = new int[20], ct = new int[20], pt = new int[20], sts = new int[20];
+    static int[] tat = new int[20], wt = new int[20];
+    static String ganttChart = "";
+    static String ganttTimes = "0 ";
+
+    static void process_Ps() {
+        int index = -1;
+        int highestPriority = Integer.MAX_VALUE;
+        for (int i = 0; i < n; i++) {
+            if (at[i] <= jtime && sts[i] != 1) {
+                if (pt[i] < highestPriority) {
+                    highestPriority = pt[i];
+                    index = i;
+                }
+            }
+        }
+        if (index != -1) {
+            ganttChart += "| P" + (index + 1) + " ";
+            int burstTime = bt[index];
+            jtime += burstTime;
+            ganttTimes += jtime + " ";
+            bt[index] = 0;
+            ct[index] = jtime;
+            sts[index] = 1;
+            counter--;
+        } else {
+            jtime++;
+            ganttTimes += jtime + " ";
+        }
+    }
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        System.out.print("Enter the number of processes: ");
+        n = sc.nextInt();
+        counter = n;
+        
+        for (int i = 0; i < n; i++) {
+            System.out.println("Process " + (i + 1) + ":");
+            System.out.print("Arrival time: ");
+            at[i] = sc.nextInt();
+            System.out.print("Burst time: ");
+            bt[i] = sc.nextInt();
+            bt_copy[i] = bt[i];
+            System.out.print("Priority: ");
+            pt[i] = sc.nextInt();
+            sts[i] = 0;
+            ct[i] = 0;
+        }
+
+        System.out.println("\nGiven details:");
+        System.out.println("PID AT BT PT");
+        for (int i = 0; i < n; i++) {
+            System.out.printf("P%-7d%-7d%-7d%-7d\n", (i + 1), at[i], bt_copy[i], pt[i]);
+        }
+
+        while (counter != 0) {
+            process_Ps();
+        }
+
+        double totalTAT = 0, totalWT = 0;
+        for (int i = 0; i < n; i++) {
+            tat[i] = ct[i] - at[i];
+            wt[i] = tat[i] - bt_copy[i];
+            totalTAT += tat[i];
+            totalWT += wt[i];
+        }
+
+        System.out.println("\nResults:");
+        System.out.println("PID AT BT PT CT TAT WT");
+        for (int i = 0; i < n; i++) {
+            System.out.printf("P%-7d%-7d%-7d%-7d%-7d%-7d%-7d\n", (i + 1), at[i], bt_copy[i], pt[i], ct[i], tat[i], wt[i]);
+        }
+
+        System.out.println("\nGantt Chart:");
+        System.out.println(ganttChart + "|");
+        System.out.println(ganttTimes);
+
+        System.out.printf("\nAverage Turnaround Time: %.2f\n", (totalTAT / n));
+        System.out.printf("Average Waiting Time: %.2f\n", (totalWT / n));
+
+        sc.close();
+    }
+}
+
+( Round Robin Scheduling Code ) 
+
+import java.util.*;
+
+public class RoundRobin {
+    public static void main(String args[]) {
+        Scanner s = new Scanner(System.in);
+        int wtime[], btime[], rtime[], num, quantum;
+        wtime = new int[10];
+        btime = new int[10];
+        rtime = new int[10];
+
+        System.out.print("Enter number of processes (MAX 10): ");
+        num = s.nextInt();
+
+        System.out.println("Enter burst time for each process:");
+        for (int i = 0; i < num; i++) {
+            System.out.print("P[" + (i + 1) + "]: ");
+            btime[i] = s.nextInt();
+            rtime[i] = btime[i];
+            wtime[i] = 0;
+        }
+
+        System.out.print("\nEnter quantum: ");
+        quantum = s.nextInt();
+
+        int rp = num;
+        int i = 0;
+        int time = 0;
+
+        List<String> ganttChart = new ArrayList<>();
+        List<Integer> ganttTime = new ArrayList<>();
+        ganttTime.add(time);
+
+        while (rp != 0) {
+            if (rtime[i] > 0) {
+                if (rtime[i] > quantum) {
+                    time += quantum;
+                    rtime[i] -= quantum;
+                } else {
+                    time += rtime[i];
+                    rtime[i] = 0;
+                    rp--;
+                }
+                ganttChart.add("P[" + (i + 1) + "]");
+                ganttTime.add(time);
+            }
+
+            i++;
+            if (i == num) {
+                i = 0;
+            }
+        }
+
+        System.out.println("\n\nGantt Chart:");
+        for (String process : ganttChart) {
+            System.out.print("|" + process + " ");
+        }
+        System.out.println("|");
+
+        for (Integer t : ganttTime) {
+            System.out.print(t + " ");
+        }
+        System.out.println();
+    }
+}
+
+
+<=========================================================================================================================================================================================================================================================================================================>
+
+exp 6 : Write a Java Program (using OOP features) to simulate Memory Placement Strategies – Best Fit, First Fit, Worst Fit and Next Fit.
+
+
+
+( Best Fit )
+
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
+
+class MemoryBlock {
+    int size;
+    boolean isAllocated;
+    String processName;  // To store the name of the allocated process
+
+    MemoryBlock(int size) {
+        this.size = size;
+        this.isAllocated = false;
+        this.processName = ""; // Initialize with empty string
+    }
+}
+
+class MemoryManager {
+    private List<MemoryBlock> memoryBlocks;
+
+    public MemoryManager(List<MemoryBlock> memoryBlocks) {
+        this.memoryBlocks = memoryBlocks;
+    }
+
+    public void bestFit(String processName, int requestSize) {
+        MemoryBlock bestBlock = null;
+
+        // Find the best fit block
+        for (MemoryBlock block : memoryBlocks) {
+            if (!block.isAllocated && block.size >= requestSize) {
+                if (bestBlock == null || block.size < bestBlock.size) {
+                    bestBlock = block;
+                }
+            }
+        }
+
+        // Allocate the best block found
+        if (bestBlock != null) {
+            bestBlock.isAllocated = true;
+            bestBlock.processName = processName; // Assign process name to the block
+            System.out.printf("| %-10s | %-10d | %-10s |\n", processName, requestSize, "Allocated");
+        } else {
+            System.out.printf("| %-10s | %-10d | %-10s |\n", processName, requestSize, "Not Allocated");
+        }
+    }
+
+    public void displayMemoryStatus() {
+        System.out.println("\nMemory Blocks Status:");
+        System.out.printf("| %-10s | %-12s |\n", "Block Size", "Process");
+        System.out.println("|------------|--------------|");
+        for (MemoryBlock block : memoryBlocks) {
+            System.out.printf("| %-10d | %-12s |\n", block.size, block.isAllocated ? block.processName : "Free");
+        }
+    }
+}
+
+public class Bestfit{
+    public static void main(String[] args) {
+        List<MemoryBlock> memoryBlocks = new ArrayList<>();
+        Scanner scanner = new Scanner(System.in);
+
+        // Input memory block sizes
+        System.out.print("Enter the number of memory blocks: ");
+        int numBlocks = scanner.nextInt();
+        for (int i = 0; i < numBlocks; i++) {
+            System.out.print("Enter size of memory block " + (i + 1) + ": ");
+            int size = scanner.nextInt();
+            memoryBlocks.add(new MemoryBlock(size));
+        }
+
+        MemoryManager memoryManager = new MemoryManager(memoryBlocks);
+
+        while (true) {
+            System.out.print("\nEnter process name (e.g., p1) or 'exit' to quit: ");
+            String processName = scanner.next();
+            if (processName.equalsIgnoreCase("exit")) break;
+
+            System.out.print("Enter the size of memory request: ");
+            int requestSize = scanner.nextInt();
+
+            memoryManager.bestFit(processName, requestSize);
+            memoryManager.displayMemoryStatus();
+        }
+
+        scanner.close();
+    }
+}
+
+( First fit ) 
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
+
+class MemoryBlock {
+    int size;
+    boolean isAllocated;
+    String processName;  // To store the name of the allocated process
+
+    MemoryBlock(int size) {
+        this.size = size;
+        this.isAllocated = false;
+        this.processName = ""; // Initialize with empty string
+    }
+}
+
+class MemoryManager {
+    private List<MemoryBlock> memoryBlocks;
+
+    public MemoryManager(List<MemoryBlock> memoryBlocks) {
+        this.memoryBlocks = memoryBlocks;
+    }
+
+    public void firstFit(String processName, int requestSize) {
+        // Find the first fit block
+        for (MemoryBlock block : memoryBlocks) {
+            if (!block.isAllocated && block.size >= requestSize) {
+                block.isAllocated = true;
+                block.processName = processName; // Assign process name to the block
+                System.out.printf("| %-10s | %-10d | %-10s |\n", processName, requestSize, "Allocated");
+                return; // Exit after allocation
+            }
+        }
+        // If no suitable block found
+        System.out.printf("| %-10s | %-10d | %-10s |\n", processName, requestSize, "Not Allocated");
+    }
+
+    public void displayMemoryStatus() {
+        System.out.println("\nMemory Blocks Status:");
+        System.out.printf("| %-10s | %-12s |\n", "Block Size", "Process");
+        System.out.println("|------------|--------------|");
+        for (MemoryBlock block : memoryBlocks) {
+            System.out.printf("| %-10d | %-12s |\n", block.size, block.isAllocated ? block.processName : "Free");
+        }
+    }
+}
+
+public class Firstfit {
+    public static void main(String[] args) {
+        List<MemoryBlock> memoryBlocks = new ArrayList<>();
+        Scanner scanner = new Scanner(System.in);
+
+        // Input memory block sizes
+        System.out.print("Enter the number of memory blocks: ");
+        int numBlocks = scanner.nextInt();
+        for (int i = 0; i < numBlocks; i++) {
+            System.out.print("Enter size of memory block " + (i + 1) + ": ");
+            int size = scanner.nextInt();
+            memoryBlocks.add(new MemoryBlock(size));
+        }
+
+        MemoryManager memoryManager = new MemoryManager(memoryBlocks);
+
+        while (true) {
+            System.out.print("\nEnter process name (e.g., p1) or 'exit' to quit: ");
+            String processName = scanner.next();
+            if (processName.equalsIgnoreCase("exit")) break;
+
+            System.out.print("Enter the size of memory request: ");
+            int requestSize = scanner.nextInt();
+
+            memoryManager.firstFit(processName, requestSize);
+            memoryManager.displayMemoryStatus();
+        }
+
+        scanner.close();
+    }
+}
+
+( Worst Fit ) 
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
+
+class MemoryBlock {
+    int size;
+    boolean isAllocated;
+    String processName;  // To store the name of the allocated process
+
+    MemoryBlock(int size) {
+        this.size = size;
+        this.isAllocated = false;
+        this.processName = ""; // Initialize with empty string
+    }
+}
+
+class MemoryManager {
+    private List<MemoryBlock> memoryBlocks;
+
+    public MemoryManager(List<MemoryBlock> memoryBlocks) {
+        this.memoryBlocks = memoryBlocks;
+    }
+
+    public void worstFit(String processName, int requestSize) {
+        MemoryBlock worstBlock = null;
+
+        // Find the worst fit block
+        for (MemoryBlock block : memoryBlocks) {
+            if (!block.isAllocated && block.size >= requestSize) {
+                if (worstBlock == null || block.size > worstBlock.size) {
+                    worstBlock = block;
+                }
+            }
+        }
+
+        // Allocate the worst block found
+        if (worstBlock != null) {
+            worstBlock.isAllocated = true;
+            worstBlock.processName = processName; // Assign process name to the block
+            System.out.printf("| %-10s | %-10d | %-10s |\n", processName, requestSize, "Allocated");
+        } else {
+            System.out.printf("| %-10s | %-10d | %-10s |\n", processName, requestSize, "Not Allocated");
+        }
+    }
+
+    public void displayMemoryStatus() {
+        System.out.println("\nMemory Blocks Status:");
+        System.out.printf("| %-10s | %-12s |\n", "Block Size", "Process");
+        System.out.println("|------------|--------------|");
+        for (MemoryBlock block : memoryBlocks) {
+            System.out.printf("| %-10d | %-12s |\n", block.size, block.isAllocated ? block.processName : "Free");
+        }
+    }
+}
+
+public class WorstFit {
+    public static void main(String[] args) {
+        List<MemoryBlock> memoryBlocks = new ArrayList<>();
+        Scanner scanner = new Scanner(System.in);
+
+        // Input memory block sizes
+        System.out.print("Enter the number of memory blocks: ");
+        int numBlocks = scanner.nextInt();
+        for (int i = 0; i < numBlocks; i++) {
+            System.out.print("Enter size of memory block " + (i + 1) + ": ");
+            int size = scanner.nextInt();
+            memoryBlocks.add(new MemoryBlock(size));
+        }
+
+        MemoryManager memoryManager = new MemoryManager(memoryBlocks);
+
+        while (true) {
+            System.out.print("\nEnter process name (e.g., p1) or 'exit' to quit: ");
+            String processName = scanner.next();
+            if (processName.equalsIgnoreCase("exit")) break;
+
+            System.out.print("Enter the size of memory request: ");
+            int requestSize = scanner.nextInt();
+
+            memoryManager.worstFit(processName, requestSize);
+            memoryManager.displayMemoryStatus();
+        }
+
+        scanner.close();
+    }
+}
+
+( Next Fit )
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
+
+class MemoryBlock {
+    int size;
+    boolean isAllocated;
+    String processName;  // To store the name of the allocated process
+
+    MemoryBlock(int size) {
+        this.size = size;
+        this.isAllocated = false;
+        this.processName = ""; // Initialize with empty string
+    }
+}
+
+class MemoryManager {
+    private List<MemoryBlock> memoryBlocks;
+    private int lastAllocatedIndex; // Track the last allocated index
+
+    public MemoryManager(List<MemoryBlock> memoryBlocks) {
+        this.memoryBlocks = memoryBlocks;
+        this.lastAllocatedIndex = 0; // Initialize to the start
+    }
+
+    public void nextFit(String processName, int requestSize) {
+        // Start searching from the last allocated index
+        for (int i = lastAllocatedIndex; i < memoryBlocks.size(); i++) {
+            MemoryBlock block = memoryBlocks.get(i);
+            if (!block.isAllocated && block.size >= requestSize) {
+                block.isAllocated = true;
+                block.processName = processName; // Assign process name to the block
+                lastAllocatedIndex = (i + 1) % memoryBlocks.size(); // Update the last allocated index
+                System.out.printf("| %-10s | %-10d | %-10s |\n", processName, requestSize, "Allocated");
+                return; // Exit after allocation
+            }
+        }
+
+        // If no suitable block found, wrap around and check from the beginning
+        for (int i = 0; i < lastAllocatedIndex; i++) {
+            MemoryBlock block = memoryBlocks.get(i);
+            if (!block.isAllocated && block.size >= requestSize) {
+                block.isAllocated = true;
+                block.processName = processName; // Assign process name to the block
+                lastAllocatedIndex = (i + 1) % memoryBlocks.size(); // Update the last allocated index
+                System.out.printf("| %-10s | %-10d | %-10s |\n", processName, requestSize, "Allocated");
+                return; // Exit after allocation
+            }
+        }
+
+        // If still no suitable block found
+        System.out.printf("| %-10s | %-10d | %-10s |\n", processName, requestSize, "Not Allocated");
+    }
+
+    public void displayMemoryStatus() {
+        System.out.println("\nMemory Blocks Status:");
+        System.out.printf("| %-10s | %-12s |\n", "Block Size", "Process");
+        System.out.println("|------------|--------------|");
+        for (MemoryBlock block : memoryBlocks) {
+            System.out.printf("| %-10d | %-12s |\n", block.size, block.isAllocated ? block.processName : "Free");
+        }
+    }
+}
+
+public class NextFit {
+    public static void main(String[] args) {
+        List<MemoryBlock> memoryBlocks = new ArrayList<>();
+        Scanner scanner = new Scanner(System.in);
+
+        // Input memory block sizes
+        System.out.print("Enter the number of memory blocks: ");
+        int numBlocks = scanner.nextInt();
+        for (int i = 0; i < numBlocks; i++) {
+            System.out.print("Enter size of memory block " + (i + 1) + ": ");
+            int size = scanner.nextInt();
+            memoryBlocks.add(new MemoryBlock(size));
+        }
+
+        MemoryManager memoryManager = new MemoryManager(memoryBlocks);
+
+        while (true) {
+            System.out.print("\nEnter process name (e.g., p1) or 'exit' to quit: ");
+            String processName = scanner.next();
+            if (processName.equalsIgnoreCase("exit")) break;
+
+            System.out.print("Enter the size of memory request: ");
+            int requestSize = scanner.nextInt();
+
+            memoryManager.nextFit(processName, requestSize);
+            memoryManager.displayMemoryStatus();
+        }
+
+        scanner.close();
+    }
+}
+
+<=========================================================================================================================================================================================================================================================================================================>
+
+exp 7 : Write a Java Program (using OOP features) to simulate paging simulation using 1. Least Recently Used (LRU) 2. Optimal algorithm
+
+
+( LRU )
+
+import java.io.*;
+
+class LRU
+ {
+  public static void main(String args[])throws IOException
+   {
+    BufferedReader obj=new BufferedReader(new InputStreamReader(System.in));
+   int f,page=0,ch,pgf=0,n,chn=0,phit=0;
+   boolean flag;
+  int pages[]; 	
+	int pt=0;
+	
+
+int k=0;
+	System.out.println("enter no. of frames: ");
+	 f=Integer.parseInt(obj.readLine());
+	int frame1[]=new int[f];
+	int a[]=new int[f];
+	int b[]=new int[f];
+	for(int i=0;i<f;i++)
+		{
+		frame1[i]=-1;
+		a[i]=-1;
+		b[i]=-1;
+		}
+	System.out.println("enter the no of pages ");
+	 n=Integer.parseInt(obj.readLine());
+	 pages=new int[n];
+	System.out.println("enter the page no ");
+	for(int j=0;j<n;j++)
+	pages[j]=Integer.parseInt(obj.readLine());
+	do{
+	int pg=0;
+	for(pg=0;pg<n;pg++)
+	{
+		page=pages[pg];
+		flag=true;
+		for(int j=0;j<f;j++)
+			{
+			if(page==frame1[j])
+			{flag=false; break;}
+			}
+	
+		for(int j=0;j<f && flag;j++)
+			{
+			if(frame1[j]==a[f-1])
+			{k=j;
+			 break;}
+			}
+	
+		if(flag)
+		{
+		frame1[k]=page;
+		System.out.println("frame :" );
+		for(int j=0;j<f;j++)
+		System.out.print(frame1[j]+"  ");
+		pgf++;
+		System.out.println();
+		}
+		else
+		{
+		System.out.println("frame :" );
+		for(int j=0;j<f;j++)
+		System.out.print(frame1[j]+"  ");
+			System.out.println();
+		}
+	int p=1;
+	b[0]=page;
+	for(int j=0;j<a.length;j++)
+	{
+		if(page!=a[j] && p<f)
+		{
+		b[p]=a[j];
+		p++;
+		}
+	}
+	for(int j=0;j<f;j++)
+	{
+	a[j]=b[j];
+	}
+	chn++;
+	
+	}
+	}while(chn!=n);
+	phit=n-pgf;
+	System.out.println("Page fault:"+pgf);
+	System.out.println("Page hit:"+phit);
+}
+}
+
+( FIFO )
+
+import java.io.*;
+
+class FIFO
+ {
+  public static void main(String args[])throws IOException
+   {
+    BufferedReader obj=new BufferedReader(new InputStreamReader(System.in));
+   int f,page=0,ch,pgf=0,n,chn=0,phit=0;
+   boolean flag;
+  int pages[]; 	
+	int pt=0;
+	
+	System.out.println("enter no. of frames: ");
+	 f=Integer.parseInt(obj.readLine());
+	int frame[]=new int[f];
+	for(int i=0;i<f;i++)
+		{
+		frame[i]=-1;
+		}
+	System.out.println("enter the no of pages ");
+	 n=Integer.parseInt(obj.readLine());
+	 pages=new int[n];
+	System.out.println("enter the page no ");
+	for(int j=0;j<n;j++)
+	pages[j]=Integer.parseInt(obj.readLine());
+	do{
+	int pg=0;
+	for(pg=0;pg<n;pg++)
+	{
+	
+	page=pages[pg];
+	flag=true;
+	for(int j=0;j<f;j++)
+	{
+	if(page==frame[j])
+	{
+	flag=false;
+	 break;
+	}
+	}
+	if(flag)
+	{
+	frame[pt]=page;
+	pt++;
+	if(pt==f)
+	pt=0;
+	System.out.print("frame :");
+	for(int j=0;j<f;j++)
+	System.out.print(frame[j]+"   ");
+
+	System.out.println();
+	pgf++;
+	}
+	else
+	{
+	System.out.print("frame :");
+	for(int j=0;j<f;j++)
+	System.out.print(frame[j]+"  ");
+
+	System.out.println();
+	}
+	
+	chn++;
+	}
+	}while(chn!=n);
+	phit=n-pgf;
+	
+	System.out.println("Page fault:"+pgf);
+	System.out.println("Page hit:"+phit);
+	
+	
+}
+}
+
+( Optimal ) 
+
+import java.io.*;
+
+class optimal{
+    public static void main(String args[]) throws IOException {
+        BufferedReader obj = new BufferedReader(new InputStreamReader(System.in));
+        int f, page = 0, pgf = 0, n, chn = 0;
+        boolean flag;
+        int pages[];
+        int pt = 0;
+
+        System.out.println("Enter the number of frames: ");
+        f = Integer.parseInt(obj.readLine());
+        int frame[] = new int[f];
+        for (int i = 0; i < f; i++) {
+            frame[i] = -1;
+        }
+        System.out.println("Enter the number of pages: ");
+        n = Integer.parseInt(obj.readLine());
+        pages = new int[n];
+        System.out.println("Enter the page numbers: ");
+        for (int j = 0; j < n; j++)
+            pages[j] = Integer.parseInt(obj.readLine());
+
+        do {
+            int pg = 0;
+            for (pg = 0; pg < n; pg++) {
+                page = pages[pg];
+                flag = true;
+
+                // Check if the page is already in a frame
+                for (int j = 0; j < f; j++) {
+                    if (page == frame[j]) {
+                        flag = false;
+                        break;
+                    }
+                }
+
+                // If the page is not found in frames, a page fault occurs
+                if (flag) {
+                    // Check for an empty frame
+                    if (pt < f) {
+                        frame[pt] = page;
+                        pt++;
+                    } else {
+                        // If no empty frame, replace the optimal page
+                        int farthest = -1;
+                        int indexToReplace = -1;
+                        for (int j = 0; j < f; j++) {
+                            int nextUse = -1;
+                            for (int k = pg + 1; k < n; k++) {
+                                if (frame[j] == pages[k]) {
+                                    nextUse = k;
+                                    break;
+                                }
+                            }
+                            // If the page is not found in the future, it can be replaced
+                            if (nextUse == -1) {
+                                indexToReplace = j;
+                                break;
+                            }
+                            // Find the page that is used farthest in the future
+                            if (nextUse > farthest) {
+                                farthest = nextUse;
+                                indexToReplace = j;
+                            }
+                        }
+                        // Replace the page in the frame
+                        frame[indexToReplace] = page;
+                    }
+
+                    // Print the current frame state
+                    System.out.print("Frame:  ");
+                    for (int j = 0; j < f; j++) {
+                        System.out.print(frame[j] + "  \t  ");
+                    }
+                    System.out.println();
+                    pgf++;  // Increment page fault count
+                } else {
+                    // Print the current frame state for hits
+                    System.out.print("Frame:  ");
+                    for (int j = 0; j < f; j++) {
+                        System.out.print(frame[j] + " \t  ");
+                    }
+                    System.out.println();
+                }
+                chn++; // Increment total pages processed
+            }
+        } while (chn != n);
+
+        int phit = n - pgf; // Calculate page hits
+        System.out.println("Page fault: " + pgf);
+        System.out.println("Page hit: " + phit);
+    }
+}
+
+<=========================================================================================================================================================================================================================================================================================================>
+
+exp 8 : Write a program in VC++ to create Dynamic Link Library for any mathematical operation and write an application program to test it
+
+
+( make a tab with the name ArithmeticOperations.c )
+
+#include <jni.h>
+#include "ArithmeticOperations.h"
+
+// Function to add two integers
+JNIEXPORT jint JNICALL Java_ArithmeticOperations_add(JNIEnv *env, jobject obj, jint a, jint b) {
+    return a + b;  // Return the sum of a and b
+}
+
+// Function to subtract one integer from another
+JNIEXPORT jint JNICALL Java_ArithmeticOperations_subtract(JNIEnv *env, jobject obj, jint a, jint b) {
+    return a - b;  // Return the difference of a and b
+}
+
+// Function to multiply two integers
+JNIEXPORT jint JNICALL Java_ArithmeticOperations_multiply(JNIEnv *env, jobject obj, jint a, jint b) {
+    return a * b;  // Return the product of a and b
+}
+
+// Function to divide one integer by another
+JNIEXPORT jint JNICALL Java_ArithmeticOperations_divide(JNIEnv *env, jobject obj, jint a, jint b) {
+    if (b == 0) {
+        return 0; // Handle division by zero (returns 0)
+    }
+    return a / b;  // Return the quotient of a and b
+}
+
+( make a another tab with the name ArithmeticOperations.java )
+
+public class ArithmeticOperations {
+    // Native methods for arithmetic operations
+    public native int add(int a, int b);
+    public native int subtract(int a, int b);
+    public native int multiply(int a, int b);
+    public native int divide(int a, int b);
+
+    // Load the native library
+    static {
+        System.loadLibrary("ArithmeticOperations");
+    }
+
+    // Main method to test the arithmetic operations
+    public static void main(String[] args) {
+        ArithmeticOperations ops = new ArithmeticOperations();
+        
+        int a = 10;
+        int b = 5;
+
+        // Perform and display the results of the operations
+        System.out.println("Addition: " + ops.add(a, b));
+        System.out.println("Subtraction: " + ops.subtract(a, b));
+        System.out.println("Multiplication: " + ops.multiply(a, b));
+        System.out.println("Division: " + ops.divide(a, b));
+    }
+}
+
+( write this commands in terminal to execute tese codes )
+
+Step 3 commands for execution on terminal 
+    • javac ArithmeticOperations.java
+    • javac -h . ArithmeticOperations.java
+    • gcc -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" -shared -o libArithmeticOperations.so ArithmeticOperations.c
+    • java -Djava.library.path=. ArithmeticOperations
+    
+( alternate USE IT IN CASE OF AN ERROR DURING EXECUTION )
+
+still if u face any errors  for execution of above program  follow this step .simply copy the following code on terminal 
+
+1 echo $JAVA_HOME
+
+2 export JAVA_HOME=/path/to/your/jdk
+
+3 export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64  source ~/.bashrc
+
+4 sudo apt-get install default-jdk
+
+5. sudo update-alternatives --config java
+
+6 echo 'export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64' >> ~/.bashrc
+7 source ~/.bashrc
+  
+8 ls $JAVA_HOME/include/jni.h
+9  ls $JAVA_HOME/include/linux/jni_md.h
+
+10 gcc -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" -shared -o libArithmeticOperations.so ArithmeticOperations.c
+
+11 java -Djava.library.path=. ArithmeticOperations
+    
