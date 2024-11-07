@@ -29,3 +29,18 @@ void loop() {
   delay(2000);
   
 }
+
+
+
+
+
+
+sensor_type=22
+gpio_pin=4
+humidity,temperature=Adafruit_DHT.read_retry(sensor_type,gpio_pin)
+if humidity is not None and temperature is not None
+print("Temperature: (:.1f)°C, Humidity: (:.1f)%".format(temperature, humidity))
+
+else:
+
+print("Failed to read sensor data. Please check your wiring and sensor (type.")
