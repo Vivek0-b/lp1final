@@ -1637,3 +1637,176 @@ still if u face any errors  for execution of above program  follow this step .si
 
 11 java -Djava.library.path=. ArithmeticOperations
     
+
+
+
+
+
+----------------------------------------------------------------------------------------------------------
+/*
+Please note that you need to have version v1.0.10 installed
+to use the DHT20 (black sensor)
+*/
+#include "Arduino_SensorKit.h"
+ 
+//uncomment line below if using DHT20 (black sensor)
+//#define Environment Environment_I2C
+ 
+void setup() {
+  //uncomment line below if using DHT20 (black sensor)
+  //Wire.begin();
+ 
+  //uncomment line below if you're connecting your DHT20 to pin a different than 3
+  //Environment.setPin(4);
+ 
+  Serial.begin(9600);
+  Environment.begin();
+}
+ 
+void loop() {
+  
+  Serial.print("Temperature = ");
+  Serial.print(Environment.readTemperature()); //print temperature
+  Serial.println(" C");
+  Serial.print("Humidity = ");
+  Serial.print(Environment.readHumidity()); //print humidity
+  Serial.println(" %");
+  delay(2000);
+  
+}
+
+-----------------------------------------
+
+import picamera
+from time import sleep
+
+#create object for PiCamera class
+camera = picamera.PiCamera()
+#set resolution
+camera.resolution = (1024, 768)
+camera.brightness = 60
+camera.start_preview()
+#add text on image
+camera.annotate_text = 'Hi Pi User'
+sleep(5)
+#store image
+camera.capture('image1.jpeg')
+camera.stop_preview()
+
+-------------------------------------------------
+
+
+---flaskApplication
+Create a file named app.py:
+python
+Copy code
+from flask import Flask, request, jsonify
+app = Flask(__name__)
+# In-memory storage for simplicity; for production use a database.
+data_store = {}
+@app.route('/publish', methods=['POST'])
+def publish():
+content = request.json
+publisher_id = content.get('publisher_id')
+data = content.get('data')
+if not publisher_id or not data:
+return jsonify({'error': 'Invalid input'}), 400
+return jsonify({'status': 'success'}), 200
+data_store[publisher_id] = data
+@app.route('/subscribe/<publisher_id>', methods=['GET'])
+
+def subscribe(publisher_id):
+data = data_store.get(publisher_id)
+if data is None:
+return jsonify({'error': 'No data found for this publisher'}), 404
+return jsonify({'data': data}), 200
+if __name__ == '__main__':
+app.run(debug=True)
+
+----frontend
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard</title>
+<style>
+body { font-family: Arial, sans-serif; }
+#data { margin-top: 20px; }
+</style>
+</head>
+<body>
+<h1>Dashboard</h1>
+<div>
+<h2>Publish Data</h2>
+<input type="text" id="publisherId" placeholder="Publisher ID" />
+<input type="text" id="data" placeholder="Data" />
+<button onclick="publish()">Publish</button>
+</div>
+<div>
+
+<h2>Subscribe to Data</h2>
+<input type="text" id="subscribeId" placeholder="Publisher ID" />
+<button onclick="subscribe()">Subscribe</button>
+</div>
+<div id="dataDisplay"></div>
+<script>
+function publish() {
+const publisherId = document.getElementById('publisherId').value;
+const data = document.getElementById('data').value;
+fetch('/publish', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ publisher_id: publisherId, data: data })
+})
+.then(response => response.json())
+.then(data => alert('Data published successfully!'))
+.catch(error => console.error('Error:', error));
+}
+function subscribe() {
+const publisherId = document.getElementById('subscribeId').value;
+fetch(`/subscribe/${publisherId}`)
+.then(response => response.json())
+.then(data => {
+if (data.error) {
+
+document.getElementById('dataDisplay').innerText = data.error;
+} else {
+document.getElementById('dataDisplay').innerText = `Data: ${data.data}`;
+}
+})
+.catch(error => console.error('Error:', error));
+}
+</script>
+</body>
+</html>
+
+
+-----------------------------------------------------------------------------------------------
+int IRSensor = 9; // connect IR sensor module to Arduino pin D9
+int LED = 13; // connect LED to Arduino pin 13
+void setup(){
+  Serial.begin(115200); // Init Serial at 115200 Baud Rate.
+  Serial.println("Serial Working"); // Test to check if serial is working or not
+  pinMode(IRSensor, INPUT); // IR Sensor pin INPUT
+  pinMode(LED, OUTPUT); // LED Pin Output
+}
+void loop(){
+  int sensorStatus = digitalRead(IRSensor); // Set the GPIO as Input
+  if (sensorStatus == 1) // Check if the pin high or not
+  {
+    // if the pin is high turn off the onboard Led
+    digitalWrite(LED, LOW); // LED LOW
+    Serial.println("Motion Detected!"); // print Motion Detected! on the serial monitor window
+  }
+  else  {
+    //else turn on the onboard LED
+    digitalWrite(LED, HIGH); // LED High
+    Serial.println("Motion Ended!"); // print Motion Ended! on the serial monitor window
+  }
+}
+
+
+
+
+
